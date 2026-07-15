@@ -1,17 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { IoCloseSharp } from "react-icons/io5";
 
-type AuthMode = "login" | "register" | "forgotPassword";
+type AuthMode = "login" | "register" | "forgotPassword" | "newPassword";
 
 type AuthModalProps = {
     isOpen: boolean;
     onClose: () => void;
+    modeFromParent?: AuthMode;
 };
 
-export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
+export default function AuthModal({ isOpen, onClose, modeFromParent = "login" }: AuthModalProps) {
 
     const [mode, setMode] = useState<AuthMode>("login");
 
@@ -23,6 +24,12 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState("");
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            setMode(modeFromParent);
+        }
+    }, [isOpen, modeFromParent])
 
     if (!isOpen) return null;
 
@@ -98,7 +105,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         setMessage("");
 
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: `${window.location.origin}/reset-password`,
+            redirectTo: `${window.location.origin}`,
         });
 
         if (error) {
@@ -108,6 +115,23 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         }
 
         setLoading(false);
+    };
+
+    const handleNewPassword = async () => {
+        setLoading(true);
+        setError(null);
+        setMessage("")
+
+        const { error } = await supabase.auth.updateUser({ password });
+
+        if (error) {
+            setError(error.message)
+            setLoading(false);
+            return;
+        } else {
+            setMessage("Heslo bolo úspešne nastavené.")
+            handleClose();
+        }
     }
 
     return (
@@ -120,6 +144,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                         {mode === "login" && "Prihlásenie"}
                         {mode === "register" && "Registrácia"}
                         {mode === "forgotPassword" && "Zabudnuté heslo"}
+                        {mode === "newPassword" && "Nové heslo"}
                     </h2>
                     <button onClick={handleClose} className="text-gray-500 hover:text-gray-700">
                         <IoCloseSharp size={24} />
@@ -353,6 +378,42 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
                                     </button>
                                 )}
                             </div>
+
+
+                        </form>
+                    </div>
+                )}
+
+                {mode === "newPassword" && (
+                    <div className="p-4">
+                        <form onSubmit={(e) => {
+                            e.preventDefault();
+                            handleNewPassword();
+                        }}>
+                            <div className="mb-2">
+                                <label className="block text-gray-700 text-sm font-bold mb-2 ml-1">
+                                    Zadaj nové heslo
+                                </label>
+                                <input
+                                    id="password"
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="shadow appearance-none border border-stone-300 rounded-3xl w-full py-2 px-3 text-gray-700 "
+                                />
+                            </div>
+
+                            <div className="flex justify-center items-center">
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 mt-2 px-4 rounded-3xl w-full cursor-pointer"
+                                >
+                                    {loading ? "Potvrdzujem..." : "Potvrdiť"}
+                                </button>
+                            </div>
+
+                        
 
 
                         </form>

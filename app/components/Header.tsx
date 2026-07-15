@@ -11,6 +11,10 @@ export default function Header() {
   const [showAuthPicker, setShowAuthPicker] = useState(false);
   const router = useRouter();
 
+  const [authModalMode, setAuthModalMode] = useState<
+    "login" | "register" | "forgotPassword" | "newPassword"
+  >("login");
+
   useEffect(() => {
     const checkUser = async () => {
       const {
@@ -24,9 +28,15 @@ export default function Header() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setSignedIn(!!session?.user);
+
+      if (event === "PASSWORD_RECOVERY"){
+        setAuthModalMode("newPassword")
+        setShowAuthModal(true);
+      }
     });
+
 
     return () => {
       subscription.unsubscribe();
@@ -77,7 +87,7 @@ export default function Header() {
         </div>
       )}
 
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} modeFromParent={authModalMode} />
 
     </header>
   )

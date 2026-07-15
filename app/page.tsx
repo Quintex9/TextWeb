@@ -1,13 +1,13 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { supabase } from "./lib/supabase";
+import { IoIosSearch } from "react-icons/io";
 import Image from "next/image";
 import { IoArrowBack } from "react-icons/io5";
 import { IoMdMenu } from "react-icons/io";
 import { MdOutlineEmojiEmotions } from "react-icons/md";
 import EmojiPicker from "./components/EmojiPicker";
 import Header from "./components/Header";
+import UsersList from "./components/UsersList";
 
 export default function Page() {
   const [activeButton, setActiveButton] = useState("chat");
@@ -53,7 +53,7 @@ export default function Page() {
   return (
     <main className="flex min-h-screen flex-col bg-gray-200">
 
-      <Header/>
+      <Header />
 
       <section className="flex flex-col justify-center items-center pt-2">
         <h2 className="text-2xl font-bold text-gray-800 mb-2">
@@ -73,25 +73,26 @@ export default function Page() {
         </button>
       </section>
 
-      <section className="flex min-h-110 w-1/3 flex-row self-center justify-items-start shadow-md rounded-3xl">
+      <section className="flex min-h-110 w-1/3 self-center shadow-md rounded-3xl">
         {activeButton === "chat" && selectedChat === null && (
-          <div className="flex flex-col w-full pt-3 gap-2">
-            <div className={`flex ml-2 hover:bg-gray-300 hover:rounded-2xl mr-2`} onClick={() => setSelectedChat("chat1")}>
-              <Image src="/chat/placeholder.svg" alt="Chat placeholder" width={50} height={50} />
-              <div>
-                <h3 className="text-md font-bold text-gray-800 translate-y-0.5 pl-2">{chats[0].name}</h3>
-                <p className="text-gray-700 text-sm pl-2">{chats[0].lastMessage}</p>
+          <div className="flex flex-col w-full">
+            {/* HEADER CHAT ZOZNAMU */}
+            <div className="flex bg-blue-400 h-11 w-full rounded-t-3xl items-center justify-center">
+              <div className="flex h-8 w-40 border border-stone-200 rounded-3xl bg-stone-100">
+                <button className="w-7 h-7  flex justify-center items-center" >
+                  <IoIosSearch size={20} className=" ml-0.5" />
+                </button>
+                <input
+                  type="text"
+                  className="w-32 focus: outline-none "
+                />
               </div>
             </div>
-            <div className={`flex ml-2 hover:bg-gray-300 hover:rounded-2xl mr-2`} onClick={() => setSelectedChat("chat2")}>
-              <Image src="/chat/placeholder.svg" alt="Chat placeholder" width={50} height={50} />
-              <div>
-                <h3 className="text-md font-bold text-gray-800 translate-y-0.5 pl-2">{chats[1].name}</h3>
-                <p className="text-gray-700 text-sm pl-2">{chats[1].lastMessage}</p>
-              </div>
-            </div>
-
-            <p className="text-gray-700 text-sm text-center pt-20">Ak chceš niekoho nájsť použi search!</p>
+            <UsersList
+              onSelectUser={(userId) => {
+                console.log("Klikol som na usera:", userId);
+              }}
+            />
           </div>
         )}
 

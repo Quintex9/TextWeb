@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getUsers } from "../lib/users";
 import Image from "next/image";
+import { RiRobot2Line } from "react-icons/ri";
 
 type Profile = {
   id: string;
@@ -11,9 +12,10 @@ type Profile = {
 
 type UsersListProps = {
   onSelectUser: (userId: string) => void;
+  onSelectBot: (botId: string) => void;
 };
 
-export default function UsersList({ onSelectUser }: UsersListProps) {
+export default function UsersList({ onSelectUser, onSelectBot }: UsersListProps) {
   const [users, setUsers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -48,6 +50,28 @@ export default function UsersList({ onSelectUser }: UsersListProps) {
 
   return (
     <div className="flex flex-col gap-2 p-3">
+      {/* Chat bot */}
+      <button
+        type="button"
+        onClick={() => onSelectBot("bot")}
+        className="flex w-full items-center gap-3 rounded-2xl p-2 text-left hover:bg-stone-100"
+      >
+        <div
+          className="w-10 h-10  rounded-full flex justify-center items-center bg-blue-400"
+        >
+          <RiRobot2Line size={20} />
+        </div>
+
+        <div className="flex flex-col">
+          <span className="font-semibold text-stone-800">
+            Chat bot
+          </span>
+
+          <span className="text-sm text-stone-500">
+            Vyskúšaj si písanie s botom.
+          </span>
+        </div>
+      </button>
       {users.map((user) => (
         <button
           key={user.id}

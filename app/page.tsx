@@ -4,10 +4,14 @@ import { IoIosSearch } from "react-icons/io";
 import ChatWindow from "./components/ChatWindow";
 import Header from "./components/Header";
 import UsersList from "./components/UsersList";
+import UsersSearchPopup from "./components/UsersSearchPopup";
 
 export default function Page() {
   const [activeButton, setActiveButton] = useState("chat");
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
+
+  const [search, setSearch] = useState("");
+  const [showSearchPopup, setShowSearchPopup] = useState(false);
 
   return (
     <main className="flex min-h-screen flex-col bg-gray-200">
@@ -36,16 +40,31 @@ export default function Page() {
         {activeButton === "chat" && selectedChat === null && (
           <div className="flex flex-col w-full">
             {/* HEADER CHAT ZOZNAMU */}
-            <div className="flex bg-blue-400 h-11 w-full rounded-t-3xl items-center justify-center">
-              <div className="flex h-8 w-40 border border-stone-200 rounded-3xl bg-stone-100">
+            <div className="relative flex bg-blue-400 h-11 w-full rounded-t-3xl items-center justify-center">
+              <div className=" flex h-8 w-40 border border-stone-200 rounded-3xl bg-stone-100">
                 <button className="w-7 h-7  flex justify-center items-center" >
                   <IoIosSearch size={20} className=" ml-0.5" />
                 </button>
                 <input
                   type="text"
+                  value={search}
+                  placeholder="Hľadať ľudí..."
+                  onFocus={() => setShowSearchPopup(true)}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    setShowSearchPopup(true);
+                  }}
                   className="w-32 focus: outline-none "
                 />
               </div>
+
+              {showSearchPopup && (
+                <UsersSearchPopup
+                  search={search}
+                  onClose={() => setShowSearchPopup(false)}
+                />
+              )}
+
             </div>
             <UsersList
               onSelectUser={(userId) => {

@@ -14,7 +14,7 @@ export default function Page() {
   const [signedIn, setSignedIn] = useState(false);
   const [activeButton, setActiveButton] = useState("chat");
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
-  const [selectedChatName, setSelectedChatName] = useState("Pouzivatel");
+  const [selectedChatName, setSelectedChatName] = useState("Používateľ");
   const [chatError, setChatError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
@@ -23,7 +23,7 @@ export default function Page() {
   const resetPageState = () => {
     setActiveButton("chat");
     setSelectedChat(null);
-    setSelectedChatName("Pouzivatel");
+    setSelectedChatName("Používateľ");
     setChatError(null);
     setSearch("");
     setShowSearchPopup(false);
@@ -65,7 +65,7 @@ export default function Page() {
     const chatId = await getOrCreateDirectChat(userId);
 
     if (!chatId) {
-      setChatError("Chat mozes otvorit az po prijatom follow vztahu.");
+      setChatError("Chat môžeš otvoriť až po prijatom follow vzťahu.");
       return;
     }
 
@@ -80,20 +80,23 @@ export default function Page() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col bg-gray-200">
+    <main className="flex min-h-screen flex-col bg-slate-100">
       <Header />
 
       <section className="flex flex-col items-center justify-center pt-2">
-        <h2 className="mb-2 text-2xl font-bold text-gray-800">
-          Vitaj v prototype textoveho webu
+        <h2 className="mb-2 text-2xl font-bold text-slate-900">
+          Vitaj v prototype textového webu
         </h2>
       </section>
 
       <section className="flex flex-row items-center justify-center pb-2">
         <button
           type="button"
-          className={`mx-1 mt-3 h-10 w-20 rounded-2xl ${activeButton === "chat" ? "bg-blue-600 text-white" : "bg-blue-500"
-            }`}
+          className={`mx-1 mt-3 h-10 w-20 rounded-2xl font-semibold transition ${
+            activeButton === "chat"
+              ? "bg-blue-600 text-white shadow-sm"
+              : "bg-white text-slate-700 hover:bg-slate-50"
+          }`}
           onClick={() => {
             setActiveButton("chat");
             setSelectedChat(null);
@@ -103,8 +106,11 @@ export default function Page() {
         </button>
         <button
           type="button"
-          className={`mx-1 mt-3 h-10 w-20 rounded-2xl ${activeButton === "groups" ? "bg-blue-600 text-white" : "bg-blue-500"
-            }`}
+          className={`mx-1 mt-3 h-10 w-20 rounded-2xl font-semibold transition ${
+            activeButton === "groups"
+              ? "bg-blue-600 text-white shadow-sm"
+              : "bg-white text-slate-700 hover:bg-slate-50"
+          }`}
           onClick={() => {
             setActiveButton("groups");
             setSelectedChat(null);
@@ -117,19 +123,19 @@ export default function Page() {
       <section className="flex min-h-110 w-1/3 self-center rounded-3xl shadow-md">
         {!signedIn && (
           <div className="flex w-full flex-col items-center justify-center rounded-3xl bg-white p-6 text-center">
-            <h3 className="text-lg font-bold text-stone-800">
-              Prihlas sa pre chat
+            <h3 className="text-lg font-bold text-slate-900">
+              Prihlás sa pre chat
             </h3>
-            <p className="mt-2 text-sm text-stone-500">
-              Po prihlaseni uvidis kontakty, skupiny a spravy.
+            <p className="mt-2 text-sm text-slate-500">
+              Po prihlásení uvidíš kontakty, skupiny a správy.
             </p>
           </div>
         )}
 
         {signedIn && activeButton === "chat" && selectedChat === null && (
           <div className="flex w-full flex-col">
-            <div className="relative flex h-11 w-full items-center justify-center rounded-t-3xl bg-blue-400">
-              <div className="flex h-8 w-40 rounded-3xl border border-stone-200 bg-stone-100">
+            <div className="relative flex h-11 w-full items-center justify-center rounded-t-3xl bg-blue-600">
+              <div className="flex h-8 w-40 rounded-3xl border border-slate-200 bg-white">
                 <button
                   type="button"
                   className="flex h-7 w-7 items-center justify-center"
@@ -139,7 +145,7 @@ export default function Page() {
                 <input
                   type="text"
                   value={search}
-                  placeholder="Hladas ludi..."
+                  placeholder="Vyhľadaj ľudí..."
                   onFocus={() => setShowSearchPopup(true)}
                   onChange={(event) => {
                     setSearch(event.target.value);
@@ -178,10 +184,7 @@ export default function Page() {
         )}
 
         {signedIn && activeButton === "chat" && selectedChat === "bot" && (
-          <ChatWindow
-            chatType="bot"
-            goBack={() => setSelectedChat(null)}
-          />
+          <ChatWindow chatType="bot" goBack={() => setSelectedChat(null)} />
         )}
 
         {activeButton === "chat" &&

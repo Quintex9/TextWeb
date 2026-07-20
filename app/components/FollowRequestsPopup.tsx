@@ -95,19 +95,19 @@ export default function FollowRequestsPopup({
   return (
     <div className="absolute right-0 top-12 z-50 w-80 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
       <div className="border-b border-slate-100 px-4 py-3">
-        <h2 className="font-semibold text-slate-900">Follow ziadosti</h2>
+        <h2 className="font-semibold text-slate-900">Follow žiadosti</h2>
       </div>
 
       <div className="max-h-80 overflow-y-auto p-2">
         {loading && (
           <p className="p-3 text-center text-sm text-slate-500">
-            Nacitavam...
+            Načítavam...
           </p>
         )}
 
         {!loading && requests.length === 0 && (
           <p className="p-3 text-center text-sm text-slate-500">
-            Nemate ziadne nove ziadosti.
+            Nemáte žiadne nové žiadosti.
           </p>
         )}
 
@@ -127,9 +127,9 @@ export default function FollowRequestsPopup({
 
               <div className="min-w-0 flex-1">
                 <p className="truncate font-semibold text-slate-900">
-                  {request.follower?.username ?? "Pouzivatel"}
+                  {request.follower?.username ?? "Používateľ"}
                 </p>
-                <p className="text-xs text-slate-500">Chce ta followovat</p>
+                <p className="text-xs text-slate-500">Chce ťa followovať</p>
               </div>
 
               <div className="flex gap-1">
@@ -138,7 +138,7 @@ export default function FollowRequestsPopup({
                   onClick={() => handleAccept(request.id)}
                   className="rounded-lg bg-blue-600 px-2 py-1 text-xs font-semibold text-white hover:bg-blue-700"
                 >
-                  Prijat
+                  Prijať
                 </button>
                 <button
                   type="button"
@@ -157,7 +157,7 @@ export default function FollowRequestsPopup({
         onClick={onClose}
         className="w-full border-t border-slate-100 py-2 text-sm text-slate-500 hover:bg-slate-50"
       >
-        Zavriet
+        Zavrieť
       </button>
     </div>
   );

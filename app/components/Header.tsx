@@ -132,7 +132,7 @@ export default function Header() {
             >
               <IoIosNotificationsOutline size={24} />
               {followRequestsCount > 0 && (
-                <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-blue-500" />
+                <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-blue-600" />
               )}
             </button>
 
@@ -148,7 +148,9 @@ export default function Header() {
             type="button"
             className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border-2 border-white bg-slate-100 shadow-sm ring-1 ring-slate-200 transition hover:ring-blue-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             onClick={handleProfileClick}
-            aria-label={signedIn ? "Otvorit pouzivatelske menu" : "Prihlasit sa"}
+            aria-label={
+              signedIn ? "Otvoriť používateľské menu" : "Prihlásiť sa"
+            }
           >
             <Image
               src="/chat/placeholder.svg"

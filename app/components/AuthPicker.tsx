@@ -25,7 +25,7 @@ export default function AuthPicker({userId, isOpen, onClose}: authPickerProp) {
 
 
     return (
-        <div className="absolute top-12 right-0 bg-gray-200 border border-gray-300 rounded-xl grid grid-cols-1 shadow w-18 overflow-hidden">
+        <div className="absolute top-12 right-0 bg-white/70 border border-gray-300 rounded-xl grid grid-cols-1 shadow w-18 overflow-hidden">
             {options.map((option, index) => (
                 <div key={index}>
                     <button
@@ -34,7 +34,7 @@ export default function AuthPicker({userId, isOpen, onClose}: authPickerProp) {
                     >
                         {option}
                     </button>
-                    {index !== options.length - 1 && (<div className="w-full bg-stone-900 h-px" />)}
+                    {index !== options.length - 1 && (<div className="w-full bg-stone-300 h-px" />)}
                 </div>
             ))
             }

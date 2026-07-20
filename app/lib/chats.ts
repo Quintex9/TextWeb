@@ -9,6 +9,8 @@ export type MyChat = {
   username: string | null;
   avatarUrl: string | null;
   lastMessage: string | null;
+  lastMessageSenderId: string | null;
+  lastMessageSenderName: string | null;
   lastMessageAt: string | null;
   createdAt: string;
 };
@@ -377,6 +379,10 @@ export const getMyChats = async (): Promise<MyChat[]> => {
       avatarUrl: otherProfile?.avatar_url ?? null,
 
       lastMessage: lastMessage?.content ?? null,
+      lastMessageSenderId: lastMessage?.user_id ?? null,
+      lastMessageSenderName: lastMessage
+        ? profilesById.get(lastMessage.user_id)?.username ?? "Ja"
+        : null,
       lastMessageAt: lastMessage?.created_at ?? null,
 
       createdAt: chat.created_at,
@@ -538,4 +544,194 @@ export const createGroupChat = async ({
   }
 
   return newGroup.id;
+};
+
+export type GroupMember = {
+  id: string;
+  username: string;
+  avatar_url: string | null;
+  isCurrentUser: boolean;
+};
+
+export const getGroupMembers = async (
+  chatId: string,
+): Promise<GroupMember[]> => {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    console.log(userError.message);
+    return [];
+  }
+
+  if (!user) return [];
+
+  const { data: membersData, error: membersError } = await supabase
+    .from("chat_members")
+    .select("user_id")
+    .eq("chat_id", chatId);
+
+  if (membersError) {
+    console.log(membersError.message);
+    return [];
+  }
+
+  const memberIds = (membersData ?? []).map((member) => member.user_id);
+
+  if (!memberIds.includes(user.id)) return [];
+  if (memberIds.length === 0) return [];
+
+  const { data: profilesData, error: profilesError } = await supabase
+    .from("profiles")
+    .select("id, username, avatar_url")
+    .in("id", memberIds);
+
+  if (profilesError) {
+    console.log(profilesError.message);
+    return [];
+  }
+
+  const profilesById = new Map(
+    ((profilesData ?? []) as ProfileRow[]).map((profile) => [
+      profile.id,
+      profile,
+    ]),
+  );
+
+  return memberIds
+    .map((memberId) => profilesById.get(memberId) ?? null)
+    .filter((profile): profile is ProfileRow => profile !== null)
+    .map((profile) => ({
+      id: profile.id,
+      username: profile.username,
+      avatar_url: profile.avatar_url,
+      isCurrentUser: profile.id === user.id,
+    }))
+    .sort((firstMember, secondMember) => {
+      if (firstMember.isCurrentUser) return -1;
+      if (secondMember.isCurrentUser) return 1;
+      return firstMember.username.localeCompare(secondMember.username);
+    });
+};
+
+export const addGroupMembers = async (
+  chatId: string,
+  memberIds: string[],
+): Promise<boolean> => {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    console.log(userError.message);
+    return false;
+  }
+
+  if (!user) return false;
+
+  const uniqueMemberIds = Array.from(
+    new Set(memberIds.filter((memberId) => memberId && memberId !== user.id)),
+  );
+
+  if (uniqueMemberIds.length === 0) return false;
+
+  const { data: chatData, error: chatError } = await supabase
+    .from("chats")
+    .select("id, is_group")
+    .eq("id", chatId)
+    .eq("is_group", true)
+    .maybeSingle();
+
+  if (chatError) {
+    console.log(chatError.message);
+    return false;
+  }
+
+  if (!chatData) return false;
+
+  const { data: existingMembers, error: membersError } = await supabase
+    .from("chat_members")
+    .select("user_id")
+    .eq("chat_id", chatId);
+
+  if (membersError) {
+    console.log(membersError.message);
+    return false;
+  }
+
+  const existingMemberIds = new Set(
+    (existingMembers ?? []).map((member) => member.user_id),
+  );
+
+  if (!existingMemberIds.has(user.id)) return false;
+
+  const { data: acceptedFollows, error: followsError } = await supabase
+    .from("follows")
+    .select("follower_id, following_id")
+    .eq("status", "accepted")
+    .or(`follower_id.eq.${user.id},following_id.eq.${user.id}`);
+
+  if (followsError) {
+    console.log(followsError.message);
+    return false;
+  }
+
+  const acceptedContactIds = new Set(
+    (acceptedFollows ?? []).map((follow) =>
+      follow.follower_id === user.id
+        ? follow.following_id
+        : follow.follower_id,
+    ),
+  );
+
+  const memberIdsToInsert = uniqueMemberIds.filter(
+    (memberId) =>
+      !existingMemberIds.has(memberId) && acceptedContactIds.has(memberId),
+  );
+
+  if (memberIdsToInsert.length === 0) return false;
+
+  const { error: insertError } = await supabase.from("chat_members").insert(
+    memberIdsToInsert.map((memberId) => ({
+      chat_id: chatId,
+      user_id: memberId,
+    })),
+  );
+
+  if (insertError) {
+    console.log(insertError.message);
+    return false;
+  }
+
+  return true;
+};
+
+export const leaveGroupChat = async (chatId: string): Promise<boolean> => {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    console.log(userError.message);
+    return false;
+  }
+
+  if (!user) return false;
+
+  const { error } = await supabase
+    .from("chat_members")
+    .delete()
+    .eq("chat_id", chatId)
+    .eq("user_id", user.id);
+
+  if (error) {
+    console.log(error.message);
+    return false;
+  }
+
+  return true;
 };

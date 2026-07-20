@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "../lib/supabase";
 import { IoCloseSharp } from "react-icons/io5";
 
@@ -27,7 +28,13 @@ export default function AuthModal({ isOpen, onClose, modeFromParent = "login" }:
 
     useEffect(() => {
         if (isOpen) {
-            setMode(modeFromParent);
+            const timeoutId = window.setTimeout(() => {
+                setMode(modeFromParent);
+            }, 0);
+
+            return () => {
+                window.clearTimeout(timeoutId);
+            };
         }
     }, [isOpen, modeFromParent])
 
@@ -134,9 +141,9 @@ export default function AuthModal({ isOpen, onClose, modeFromParent = "login" }:
         }
     }
 
-    return (
-        <div className="fixed inset-0 z-50 flex justify-center items-center bg-black/40">
-            <div className="w-100 rounded-3xl bg-stone-100 shadow-lg">
+    const modal = (
+        <div className="fixed inset-0 z-9999 flex items-center justify-center bg-black/40 p-4">
+            <div className="w-full max-w-md rounded-3xl bg-stone-100 shadow-lg">
 
                 {/* HEADER MODALU */}
                 <div className="flex justify-between items-center p-4 shadow-md">
@@ -423,4 +430,6 @@ export default function AuthModal({ isOpen, onClose, modeFromParent = "login" }:
             </div>
         </div>
     );
+
+    return createPortal(modal, document.body);
 }

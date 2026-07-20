@@ -1,23 +1,32 @@
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { IoIosNotificationsOutline } from "react-icons/io";
 import { IoChatbubbleEllipsesOutline } from "react-icons/io5";
 import { supabase } from "../lib/supabase";
 import AuthModal from "./AuthModal";
 import AuthPicker from "./AuthPicker";
+import FollowRequestsPopup from "./FollowRequestsPopup";
+import { getFollowRequests } from "../lib/follows";
 
 export default function Header() {
   const [signedIn, setSignedIn] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showAuthPicker, setShowAuthPicker] = useState(false);
+  const [showFollowRequests, setShowFollowRequests] = useState(false);
+  const [followRequestsCount, setFollowRequestsCount] = useState(0);
   const router = useRouter();
   const authRef = useRef<HTMLDivElement>(null);
+  const notificationsRef = useRef<HTMLDivElement>(null);
 
   const [authModalMode, setAuthModalMode] = useState<
     "login" | "register" | "forgotPassword" | "newPassword"
   >("login");
+
+  const handleFollowRequestsCountChange = useCallback((count: number) => {
+    setFollowRequestsCount(count);
+  }, []);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -27,15 +36,29 @@ export default function Header() {
 
       setSignedIn(!!user);
       setUserId(user?.id ?? null);
+
+      if (user) {
+        const requests = await getFollowRequests();
+        setFollowRequestsCount(requests.length);
+      } else {
+        setFollowRequestsCount(0);
+      }
     };
 
     checkUser();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSignedIn(!!session?.user);
       setUserId(session?.user?.id ?? null);
+
+      if (session?.user) {
+        const requests = await getFollowRequests();
+        setFollowRequestsCount(requests.length);
+      } else {
+        setFollowRequestsCount(0);
+      }
 
       if (event === "PASSWORD_RECOVERY") {
         setAuthModalMode("newPassword");
@@ -52,6 +75,13 @@ export default function Header() {
     const handleClickOutside = (event: MouseEvent) => {
       if (authRef.current && !authRef.current.contains(event.target as Node)) {
         setShowAuthPicker(false);
+      }
+
+      if (
+        notificationsRef.current &&
+        !notificationsRef.current.contains(event.target as Node)
+      ) {
+        setShowFollowRequests(false);
       }
     };
 
@@ -93,13 +123,26 @@ export default function Header() {
         </button>
 
         <div ref={authRef} className="relative ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-            aria-label="Notifikacie"
-          >
-            <IoIosNotificationsOutline size={24} />
-          </button>
+          <div ref={notificationsRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setShowFollowRequests((isOpen) => !isOpen)}
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              aria-label="Notifikacie"
+            >
+              <IoIosNotificationsOutline size={24} />
+              {followRequestsCount > 0 && (
+                <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-blue-500" />
+              )}
+            </button>
+
+            {showFollowRequests && (
+              <FollowRequestsPopup
+                onClose={() => setShowFollowRequests(false)}
+                onRequestCountChange={handleFollowRequestsCountChange}
+              />
+            )}
+          </div>
 
           <button
             type="button"

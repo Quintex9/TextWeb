@@ -1,61 +1,156 @@
+import { hasAcceptedFollowRelationship } from "./follows";
 import { supabase } from "./supabase";
 
+export type MyChat = {
+  chatId: string;
+  isGroup: boolean;
+  chatName: string | null;
+  otherUserId: string | null;
+  username: string | null;
+  avatarUrl: string | null;
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  createdAt: string;
+};
+
+type ChatRow = {
+  id: string;
+  name: string | null;
+  is_group: boolean;
+  created_at: string;
+  created_by: string;
+};
+
+type ChatMemberRow = {
+  chat_id: string;
+  user_id: string;
+};
+
+type ProfileRow = {
+  id: string;
+  username: string;
+  avatar_url: string | null;
+};
+
+type MessageRow = {
+  id: string;
+  chat_id: string;
+  user_id: string;
+  content: string;
+  created_at: string;
+};
+
+/**
+ * Nájde existujúci direct chat alebo vytvorí nový.
+ * Chat môže vzniknúť iba medzi používateľmi
+ * s prijatým follow vzťahom.
+ */
 export const getOrCreateDirectChat = async (
   targetUserId: string,
 ): Promise<string | null> => {
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
 
-  if (!user) return null;
-
-  // Moje členstvá iba v direct chatoch
-  const { data: myDirectChats, error: myChatsError } = await supabase
-    .from("chat_members")
-    .select(`
-      chat_id,
-      chats!inner (
-        id,
-        is_group
-      )
-    `)
-    .eq("user_id", user.id)
-    .eq("chats.is_group", false);
-
-  if (myChatsError) {
-    console.log(myChatsError.message);
+  if (userError) {
+    console.log(userError.message);
     return null;
   }
 
-  const directChatIds = myDirectChats.map((item) => item.chat_id);
+  if (!user) {
+    console.log("Používateľ nie je prihlásený.");
+    return null;
+  }
 
-  // Zistíme, či je target user v niektorom z mojich direct chatov
-  if (directChatIds.length > 0) {
-    const { data: existingChat, error: existingChatError } =
+  if (user.id === targetUserId) {
+    console.log("Nemôžeš vytvoriť chat sám so sebou.");
+    return null;
+  }
+
+  /*
+   * 1. Skontrolujeme, či majú používatelia
+   * prijatý follow vzťah v jednom alebo druhom smere.
+   */
+  const hasAcceptedFollow = await hasAcceptedFollowRelationship(targetUserId);
+
+  if (!hasAcceptedFollow) {
+    console.log(
+      "Chat je možné vytvoriť až po prijatí follow žiadosti.",
+    );
+
+    return null;
+  }
+
+  /*
+   * 2. Načítame všetky direct chaty,
+   * ktorých členom je prihlásený používateľ.
+   */
+  const { data: myMemberships, error: membershipsError } =
+    await supabase
+      .from("chat_members")
+      .select("chat_id")
+      .eq("user_id", user.id);
+
+  if (membershipsError) {
+    console.log(membershipsError.message);
+    return null;
+  }
+
+  const myChatIds =
+    myMemberships?.map((membership) => membership.chat_id) ?? [];
+
+  if (myChatIds.length > 0) {
+    const { data: directChats, error: directChatsError } =
       await supabase
-        .from("chat_members")
-        .select("chat_id")
-        .eq("user_id", targetUserId)
-        .in("chat_id", directChatIds)
-        .limit(1)
-        .maybeSingle();
+        .from("chats")
+        .select("id")
+        .in("id", myChatIds)
+        .eq("is_group", false);
 
-    if (existingChatError) {
-      console.log(existingChatError.message);
+    if (directChatsError) {
+      console.log(directChatsError.message);
       return null;
     }
 
-    if (existingChat) {
-      return existingChat.chat_id;
+    const directChatIds =
+      directChats?.map((chat) => chat.id) ?? [];
+
+    /*
+     * 3. Skontrolujeme, či je target používateľ
+     * členom niektorého z mojich direct chatov.
+     */
+    if (directChatIds.length > 0) {
+      const { data: existingMembership, error: existingError } =
+        await supabase
+          .from("chat_members")
+          .select("chat_id")
+          .eq("user_id", targetUserId)
+          .in("chat_id", directChatIds)
+          .limit(1)
+          .maybeSingle();
+
+      if (existingError) {
+        console.log(existingError.message);
+        return null;
+      }
+
+      if (existingMembership) {
+        return existingMembership.chat_id;
+      }
     }
   }
 
-  // Chat neexistuje, vytvoríme nový
+  /*
+   * 4. Spoločný direct chat neexistuje,
+   * preto vytvoríme nový.
+   */
   const { data: newChat, error: newChatError } = await supabase
     .from("chats")
     .insert({
       created_by: user.id,
       is_group: false,
+      name: null,
     })
     .select("id")
     .single();
@@ -65,7 +160,9 @@ export const getOrCreateDirectChat = async (
     return null;
   }
 
-  // Pridáme oboch členov
+  /*
+   * 5. Do chatu pridáme oboch používateľov.
+   */
   const { error: membersError } = await supabase
     .from("chat_members")
     .insert([
@@ -81,37 +178,364 @@ export const getOrCreateDirectChat = async (
 
   if (membersError) {
     console.log(membersError.message);
+
+    // Odstránenie prázdneho chatu, ak vloženie členov zlyhá.
+    await supabase
+      .from("chats")
+      .delete()
+      .eq("id", newChat.id);
+
     return null;
   }
 
   return newChat.id;
 };
 
-export const getMyChats = async () => {
+/**
+ * Načíta všetky chaty prihláseného používateľa.
+ *
+ * Pri direct chate doplní profil druhého používateľa.
+ * Pri každom chate doplní poslednú správu.
+ */
+export const getMyChats = async (): Promise<MyChat[]> => {
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser();
 
-  if (!user) return [];
-
-  const { data, error } = await supabase
-    .from("chat_members")
-    .select(`
-      chat_id,
-      chats (
-        id,
-        name,
-        is_group,
-        created_at,
-        created_by
-      )
-    `)
-    .eq("user_id", user.id);
-
-  if (error) {
-    console.log(error.message);
+  if (userError) {
+    console.log(userError.message);
     return [];
   }
 
-  return data;
+  if (!user) return [];
+
+  /*
+   * 1. Načítame členstvá aktuálneho používateľa.
+   */
+  const { data: myMemberships, error: membershipsError } =
+    await supabase
+      .from("chat_members")
+      .select("chat_id")
+      .eq("user_id", user.id);
+
+  if (membershipsError) {
+    console.log(membershipsError.message);
+    return [];
+  }
+
+  const chatIds =
+    myMemberships?.map((membership) => membership.chat_id) ?? [];
+
+  if (chatIds.length === 0) {
+    return [];
+  }
+
+  /*
+   * 2. Načítame samotné chaty.
+   */
+  const { data: chatsData, error: chatsError } = await supabase
+    .from("chats")
+    .select(`
+      id,
+      name,
+      is_group,
+      created_at,
+      created_by
+    `)
+    .in("id", chatIds);
+
+  if (chatsError) {
+    console.log(chatsError.message);
+    return [];
+  }
+
+  const chats = (chatsData ?? []) as ChatRow[];
+
+  /*
+   * 3. Načítame všetkých členov týchto chatov.
+   * Pri direct chate tak nájdeme druhého používateľa.
+   */
+  const { data: membersData, error: membersError } =
+    await supabase
+      .from("chat_members")
+      .select("chat_id, user_id")
+      .in("chat_id", chatIds);
+
+  if (membersError) {
+    console.log(membersError.message);
+    return [];
+  }
+
+  const members = (membersData ?? []) as ChatMemberRow[];
+
+  /*
+   * ID ostatných používateľov.
+   */
+  const otherUserIds = Array.from(
+    new Set(
+      members
+        .filter((member) => member.user_id !== user.id)
+        .map((member) => member.user_id),
+    ),
+  );
+
+  /*
+   * 4. Načítame profily ostatných používateľov.
+   */
+  let profiles: ProfileRow[] = [];
+
+  if (otherUserIds.length > 0) {
+    const { data: profilesData, error: profilesError } =
+      await supabase
+        .from("profiles")
+        .select("id, username, avatar_url")
+        .in("id", otherUserIds);
+
+    if (profilesError) {
+      console.log(profilesError.message);
+      return [];
+    }
+
+    profiles = (profilesData ?? []) as ProfileRow[];
+  }
+
+  /*
+   * 5. Načítame správy od najnovšej.
+   *
+   * Prvá nájdená správa každého chatu
+   * bude jeho posledná správa.
+   */
+  const { data: messagesData, error: messagesError } =
+    await supabase
+      .from("messages")
+      .select(`
+        id,
+        chat_id,
+        user_id,
+        content,
+        created_at
+      `)
+      .in("chat_id", chatIds)
+      .order("created_at", { ascending: false });
+
+  if (messagesError) {
+    console.log(messagesError.message);
+    return [];
+  }
+
+  const messages = (messagesData ?? []) as MessageRow[];
+
+  /*
+   * Mapy zrýchlia vyhľadávanie profilov
+   * a posledných správ.
+   */
+  const profilesById = new Map(
+    profiles.map((profile) => [profile.id, profile]),
+  );
+
+  const lastMessageByChatId = new Map<string, MessageRow>();
+
+  for (const message of messages) {
+    if (!lastMessageByChatId.has(message.chat_id)) {
+      lastMessageByChatId.set(message.chat_id, message);
+    }
+  }
+
+  /*
+   * 6. Vytvoríme výsledok vhodný priamo pre ChatList.
+   */
+  const result: MyChat[] = chats.map((chat) => {
+    const chatMembers = members.filter(
+      (member) => member.chat_id === chat.id,
+    );
+
+    const otherMember = chat.is_group
+      ? null
+      : chatMembers.find(
+        (member) => member.user_id !== user.id,
+      ) ?? null;
+
+    const otherProfile = otherMember
+      ? profilesById.get(otherMember.user_id) ?? null
+      : null;
+
+    const lastMessage =
+      lastMessageByChatId.get(chat.id) ?? null;
+
+    return {
+      chatId: chat.id,
+      isGroup: chat.is_group,
+
+      // Pri skupine názov skupiny, pri direct chate username.
+      chatName: chat.is_group
+        ? chat.name
+        : otherProfile?.username ?? null,
+
+      otherUserId: otherProfile?.id ?? null,
+      username: otherProfile?.username ?? null,
+      avatarUrl: otherProfile?.avatar_url ?? null,
+
+      lastMessage: lastMessage?.content ?? null,
+      lastMessageAt: lastMessage?.created_at ?? null,
+
+      createdAt: chat.created_at,
+    };
+  });
+
+  /*
+   * Chat s najnovšou správou bude prvý.
+   * Chat bez správy sa zoradí podľa dátumu vytvorenia.
+   */
+  return result.sort((firstChat, secondChat) => {
+    const firstDate =
+      firstChat.lastMessageAt ?? firstChat.createdAt;
+
+    const secondDate =
+      secondChat.lastMessageAt ?? secondChat.createdAt;
+
+    return (
+      new Date(secondDate).getTime() -
+      new Date(firstDate).getTime()
+    );
+  });
+};
+
+export type CreateGroupChatInput = {
+  name: string;
+  memberIds: string[];
+};
+
+export const createGroupChat = async ({
+  name,
+  memberIds,
+}: CreateGroupChatInput): Promise<string | null> => {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    console.log(userError.message);
+    return null;
+  }
+
+  if (!user) {
+    console.log("Používateľ nie je prihlásený.");
+    return null;
+  }
+
+  const cleanName = name.trim();
+
+  if (cleanName.length < 3) {
+    console.log("Názov skupiny musí mať aspoň 3 znaky.");
+    return null;
+  }
+
+  if (cleanName.length > 50) {
+    console.log("Názov skupiny môže mať maximálne 50 znakov.");
+    return null;
+  }
+
+  const uniqueMemberIds = Array.from(
+    new Set(
+      memberIds.filter(
+        (memberId) =>
+          memberId &&
+          memberId !== user.id,
+      ),
+    ),
+  );
+
+  if (uniqueMemberIds.length === 0) {
+    console.log("Vyber aspoň jedného člena skupiny.");
+    return null;
+  }
+
+  /*
+   * Overíme, že vybraní používatelia sú prijaté kontakty.
+   */
+  const { data: acceptedFollows, error: followsError } =
+    await supabase
+      .from("follows")
+      .select("follower_id, following_id")
+      .eq("status", "accepted")
+      .or(
+        `follower_id.eq.${user.id},following_id.eq.${user.id}`,
+      );
+
+  if (followsError) {
+    console.log(followsError.message);
+    return null;
+  }
+
+  const acceptedContactIds = new Set(
+    (acceptedFollows ?? []).map((follow) =>
+      follow.follower_id === user.id
+        ? follow.following_id
+        : follow.follower_id,
+    ),
+  );
+
+  const invalidMember = uniqueMemberIds.find(
+    (memberId) => !acceptedContactIds.has(memberId),
+  );
+
+  if (invalidMember) {
+    console.log(
+      "Do skupiny môžeš pridať iba prijaté kontakty.",
+    );
+    return null;
+  }
+
+  /*
+   * Vytvorenie skupinového chatu.
+   */
+  const { data: newGroup, error: groupError } =
+    await supabase
+      .from("chats")
+      .insert({
+        name: cleanName,
+        is_group: true,
+        created_by: user.id,
+      })
+      .select("id")
+      .single();
+
+  if (groupError) {
+    console.log(groupError.message);
+    return null;
+  }
+
+  /*
+   * Zakladateľ + vybraní členovia.
+   */
+  const allMemberIds = [
+    user.id,
+    ...uniqueMemberIds,
+  ];
+
+  const membersToInsert = allMemberIds.map(
+    (memberId) => ({
+      chat_id: newGroup.id,
+      user_id: memberId,
+    }),
+  );
+
+  const { error: membersError } = await supabase
+    .from("chat_members")
+    .insert(membersToInsert);
+
+  if (membersError) {
+    console.log(membersError.message);
+
+    await supabase
+      .from("chats")
+      .delete()
+      .eq("id", newGroup.id);
+
+    return null;
+  }
+
+  return newGroup.id;
 };

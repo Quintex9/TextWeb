@@ -24,6 +24,7 @@ export default function UsersSearchPopup({
     const [randomUsers, setRandomUsers] = useState<Profile[]>([]);
     const [sentRequests, setSentRequests] = useState<string[]>([]);
     const [loading, setLoading] = useState(true);
+    const [followError, setFollowError] = useState<string | null>(null);
 
     const searchRef = useRef<HTMLDivElement>(null);
 
@@ -81,16 +82,24 @@ export default function UsersSearchPopup({
     }, [search, users, randomUsers]);
 
     const handleFollow = async (userId: string) => {
-        await sendFollowRequest(userId);
+        setFollowError(null);
+        const success = await sendFollowRequest(userId);
 
-        setSentRequests((previousRequests) => [
-            ...previousRequests,
-            userId,
-        ]);
+        if (success) {
+            setSentRequests((previousRequests) => [
+                ...previousRequests,
+                userId,
+            ]);
+        } else {
+            setFollowError("Follow ziadost sa nepodarilo odoslat.");
+        }
     };
 
     return (
-        <div className="absolute left-1/2 top-full z-50 w-72 -translate-x-1/2 overflow-hidden rounded-2xl border border-stone-300 bg-white shadow-xl">
+        <div
+            ref={searchRef}
+            className="absolute left-1/2 top-full z-50 w-72 -translate-x-1/2 overflow-hidden rounded-2xl border border-stone-300 bg-white shadow-xl"
+        >
             <div className="max-h-72 overflow-y-auto p-2">
                 {loading && (
                     <p className="p-3 text-center text-sm text-stone-500">
@@ -104,13 +113,18 @@ export default function UsersSearchPopup({
                     </p>
                 )}
 
+                {followError && (
+                    <p className="px-3 pb-2 text-center text-sm text-red-500">
+                        {followError}
+                    </p>
+                )}
+
                 {!loading &&
                     displayedUsers.map((user) => {
                         const requestSent = sentRequests.includes(user.id);
 
                         return (
                             <div
-                                ref={searchRef}
                                 key={user.id}
                                 className="flex items-center gap-3 rounded-xl p-2 hover:bg-stone-100"
                             >

@@ -11,7 +11,7 @@ type Profile = {
 };
 
 type UsersListProps = {
-  onSelectUser: (userId: string) => void;
+  onSelectUser: (userId: string, username: string) => void;
   onSelectBot: (botId: string) => void;
 };
 
@@ -76,7 +76,7 @@ export default function UsersList({ onSelectUser, onSelectBot }: UsersListProps)
         <button
           key={user.id}
           type="button"
-          onClick={() => onSelectUser(user.id)}
+          onClick={() => onSelectUser(user.id, user.username)}
           className="flex w-full items-center gap-3 rounded-2xl p-2 text-left hover:bg-stone-100"
         >
           <Image

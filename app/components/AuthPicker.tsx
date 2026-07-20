@@ -15,8 +15,10 @@ export default function AuthPicker({userId, isOpen, onClose}: authPickerProp) {
     const router = useRouter();
 
     const handleSignOut = async () => {
-        await supabase.auth.signOut()
+        await supabase.auth.signOut();
         onClose();
+        router.replace("/");
+        router.refresh();
     }
 
     if (!isOpen) return null;

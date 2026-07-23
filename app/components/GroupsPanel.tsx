@@ -23,9 +23,15 @@ import { getAcceptedContacts, type FollowContact } from "../lib/follows";
 
 type GroupsPanelProps = {
   onSelectGroup: (chatId: string, chatName: string) => void;
+  refreshKey?: number;
+  readAtByChatId?: Record<string, string>;
 };
 
-export default function GroupsPanel({ onSelectGroup }: GroupsPanelProps) {
+export default function GroupsPanel({
+  onSelectGroup,
+  refreshKey = 0,
+  readAtByChatId = {},
+}: GroupsPanelProps) {
   const [groupName, setGroupName] = useState("");
   const [contacts, setContacts] = useState<FollowContact[]>([]);
   const [groups, setGroups] = useState<MyChat[]>([]);
@@ -73,7 +79,7 @@ export default function GroupsPanel({ onSelectGroup }: GroupsPanelProps) {
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, []);
+  }, [refreshKey]);
 
   const selectedDetailGroup = useMemo(
     () =>
@@ -292,11 +298,24 @@ export default function GroupsPanel({ onSelectGroup }: GroupsPanelProps) {
 
           {groups.map((group) => {
             const isDetailOpen = selectedDetailGroupId === group.chatId;
+            const localReadAt = readAtByChatId[group.chatId];
+            const isLocallyRead =
+              Boolean(localReadAt) &&
+              Boolean(group.lastMessageAt) &&
+              new Date(localReadAt as string).getTime() >=
+                new Date(group.lastMessageAt as string).getTime();
+            const unreadCount =
+              isLocallyRead || group.lastMessageIsMine
+                ? 0
+                : group.unreadCount;
+            const hasUnread = unreadCount > 0;
 
             return (
               <div
                 key={group.chatId}
-                className="overflow-hidden rounded-2xl bg-white shadow-sm"
+                className={`overflow-hidden rounded-2xl shadow-sm ${
+                  hasUnread ? "bg-blue-50" : "bg-white"
+                }`}
               >
                 <div className="flex items-center gap-2 p-3">
                   <button
@@ -313,11 +332,23 @@ export default function GroupsPanel({ onSelectGroup }: GroupsPanelProps) {
                       <p className="truncate font-semibold text-slate-900">
                         {group.chatName ?? "Skupina"}
                       </p>
-                      <p className="truncate text-sm text-slate-500">
+                      <p
+                        className={`truncate text-sm ${
+                          hasUnread
+                            ? "font-semibold text-slate-800"
+                            : "text-slate-500"
+                        }`}
+                      >
                         {group.lastMessage ?? "Bez správ"}
                       </p>
                     </div>
                   </button>
+
+                  {hasUnread && (
+                    <span className="flex h-6 min-w-6 shrink-0 items-center justify-center rounded-full bg-blue-600 px-2 text-xs font-bold text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
 
                   <button
                     type="button"

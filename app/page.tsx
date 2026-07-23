@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { IoIosSearch } from "react-icons/io";
 import ChatWindow from "./components/ChatWindow";
 import GroupsPanel from "./components/GroupsPanel";
 import Header from "./components/Header";
 import UsersList from "./components/UsersList";
 import UsersSearchPopup from "./components/UsersSearchPopup";
-import { getOrCreateDirectChat } from "./lib/chats";
+import { getOrCreateDirectChat, markChatAsRead } from "./lib/chats";
 import { supabase } from "./lib/supabase";
 
 export default function Page() {
@@ -15,19 +15,48 @@ export default function Page() {
   const [activeButton, setActiveButton] = useState("chat");
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [selectedChatName, setSelectedChatName] = useState("Používateľ");
+  const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(
+    null,
+  );
+  const [readAtByChatId, setReadAtByChatId] = useState<Record<string, string>>(
+    {},
+  );
+  const [chatListRefreshKey, setChatListRefreshKey] = useState(0);
   const [chatError, setChatError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
   const [showSearchPopup, setShowSearchPopup] = useState(false);
 
-  const resetPageState = () => {
+  const refreshChatLists = useCallback(() => {
+    setChatListRefreshKey((currentKey) => currentKey + 1);
+  }, []);
+
+  const markChatAsLocallyRead = useCallback((chatId: string) => {
+    setReadAtByChatId((currentReadAtByChatId) => ({
+      ...currentReadAtByChatId,
+      [chatId]: new Date().toISOString(),
+    }));
+  }, []);
+
+  const handleChatRead = useCallback(
+    (chatId: string) => {
+      markChatAsLocallyRead(chatId);
+      refreshChatLists();
+    },
+    [markChatAsLocallyRead, refreshChatLists],
+  );
+
+  const resetPageState = useCallback(() => {
     setActiveButton("chat");
     setSelectedChat(null);
     setSelectedChatName("Používateľ");
+    setSelectedChatUserId(null);
     setChatError(null);
     setSearch("");
     setShowSearchPopup(false);
-  };
+    setReadAtByChatId({});
+    refreshChatLists();
+  }, [refreshChatLists]);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -57,7 +86,30 @@ export default function Page() {
     return () => {
       subscription.unsubscribe();
     };
-  }, []);
+  }, [resetPageState]);
+
+  useEffect(() => {
+    if (!signedIn) return;
+
+    const channel = supabase
+      .channel("chat-list-messages")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+        },
+        () => {
+          refreshChatLists();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [signedIn, refreshChatLists]);
 
   const openDirectChat = async (userId: string, username: string) => {
     setChatError(null);
@@ -70,13 +122,29 @@ export default function Page() {
     }
 
     setSelectedChatName(username);
+    setSelectedChatUserId(userId);
     setSelectedChat(chatId);
+    markChatAsLocallyRead(chatId);
+
+    const success = await markChatAsRead(chatId);
+
+    if (success) {
+      refreshChatLists();
+    }
   };
 
-  const openGroupChat = (chatId: string, chatName: string) => {
+  const openGroupChat = async (chatId: string, chatName: string) => {
     setActiveButton("chat");
     setSelectedChatName(chatName);
+    setSelectedChatUserId(null);
     setSelectedChat(chatId);
+    markChatAsLocallyRead(chatId);
+
+    const success = await markChatAsRead(chatId);
+
+    if (success) {
+      refreshChatLists();
+    }
   };
 
   return (
@@ -100,6 +168,7 @@ export default function Page() {
           onClick={() => {
             setActiveButton("chat");
             setSelectedChat(null);
+            setSelectedChatUserId(null);
           }}
         >
           Chat
@@ -114,6 +183,7 @@ export default function Page() {
           onClick={() => {
             setActiveButton("groups");
             setSelectedChat(null);
+            setSelectedChatUserId(null);
           }}
         >
           Skupiny
@@ -164,9 +234,12 @@ export default function Page() {
             </div>
 
             <UsersList
+              refreshKey={chatListRefreshKey}
+              readAtByChatId={readAtByChatId}
               onSelectUser={openDirectChat}
               onSelectBot={() => {
                 setSelectedChatName("Chat bot");
+                setSelectedChatUserId(null);
                 setSelectedChat("bot");
               }}
             />
@@ -180,7 +253,11 @@ export default function Page() {
         )}
 
         {signedIn && activeButton === "groups" && (
-          <GroupsPanel onSelectGroup={openGroupChat} />
+          <GroupsPanel
+            refreshKey={chatListRefreshKey}
+            readAtByChatId={readAtByChatId}
+            onSelectGroup={openGroupChat}
+          />
         )}
 
         {signedIn && activeButton === "chat" && selectedChat === "bot" && (
@@ -195,7 +272,12 @@ export default function Page() {
               chatType="user"
               chatId={selectedChat}
               chatName={selectedChatName}
-              goBack={() => setSelectedChat(null)}
+              chatProfileUserId={selectedChatUserId}
+              onChatRead={handleChatRead}
+              goBack={() => {
+                setSelectedChat(null);
+                setSelectedChatUserId(null);
+              }}
             />
           )}
       </section>

@@ -11,7 +11,9 @@ export type MyChat = {
   lastMessage: string | null;
   lastMessageSenderId: string | null;
   lastMessageSenderName: string | null;
+  lastMessageIsMine: boolean;
   lastMessageAt: string | null;
+  unreadCount: number;
   createdAt: string;
 };
 
@@ -26,6 +28,7 @@ type ChatRow = {
 type ChatMemberRow = {
   chat_id: string;
   user_id: string;
+  last_read_at: string | null;
 };
 
 type ProfileRow = {
@@ -91,7 +94,7 @@ export const getOrCreateDirectChat = async (
   const { data: myMemberships, error: membershipsError } =
     await supabase
       .from("chat_members")
-      .select("chat_id")
+      .select("chat_id, last_read_at")
       .eq("user_id", user.id);
 
   if (membershipsError) {
@@ -218,7 +221,7 @@ export const getMyChats = async (): Promise<MyChat[]> => {
   const { data: myMemberships, error: membershipsError } =
     await supabase
       .from("chat_members")
-      .select("chat_id")
+      .select("chat_id, last_read_at")
       .eq("user_id", user.id);
 
   if (membershipsError) {
@@ -261,7 +264,7 @@ export const getMyChats = async (): Promise<MyChat[]> => {
   const { data: membersData, error: membersError } =
     await supabase
       .from("chat_members")
-      .select("chat_id, user_id")
+      .select("chat_id, user_id, last_read_at")
       .in("chat_id", chatIds);
 
   if (membersError) {
@@ -336,6 +339,13 @@ export const getMyChats = async (): Promise<MyChat[]> => {
     profiles.map((profile) => [profile.id, profile]),
   );
 
+  const myMembershipByChatId = new Map(
+    ((myMemberships ?? []) as ChatMemberRow[]).map((membership) => [
+      membership.chat_id,
+      membership,
+    ]),
+  );
+
   const lastMessageByChatId = new Map<string, MessageRow>();
 
   for (const message of messages) {
@@ -364,6 +374,16 @@ export const getMyChats = async (): Promise<MyChat[]> => {
 
     const lastMessage =
       lastMessageByChatId.get(chat.id) ?? null;
+    const myMembership = myMembershipByChatId.get(chat.id) ?? null;
+    const lastReadAt = myMembership?.last_read_at
+      ? new Date(myMembership.last_read_at).getTime()
+      : 0;
+    const unreadCount = messages.filter(
+      (message) =>
+        message.chat_id === chat.id &&
+        message.user_id !== user.id &&
+        new Date(message.created_at).getTime() > lastReadAt,
+    ).length;
 
     return {
       chatId: chat.id,
@@ -381,9 +401,13 @@ export const getMyChats = async (): Promise<MyChat[]> => {
       lastMessage: lastMessage?.content ?? null,
       lastMessageSenderId: lastMessage?.user_id ?? null,
       lastMessageSenderName: lastMessage
-        ? profilesById.get(lastMessage.user_id)?.username ?? "Ja"
+        ? lastMessage.user_id === user.id
+          ? "Ja"
+          : profilesById.get(lastMessage.user_id)?.username ?? "Používateľ"
         : null,
+      lastMessageIsMine: lastMessage?.user_id === user.id,
       lastMessageAt: lastMessage?.created_at ?? null,
+      unreadCount,
 
       createdAt: chat.created_at,
     };
@@ -544,6 +568,42 @@ export const createGroupChat = async ({
   }
 
   return newGroup.id;
+};
+
+export const markChatAsRead = async (chatId: string): Promise<boolean> => {
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError) {
+    console.log(userError.message);
+    return false;
+  }
+
+  if (!user) return false;
+
+  const { data, error } = await supabase
+    .from("chat_members")
+    .update({
+      last_read_at: new Date().toISOString(),
+    })
+    .eq("chat_id", chatId)
+    .eq("user_id", user.id)
+    .select("chat_id, last_read_at")
+    .maybeSingle();
+
+  if (error) { 
+    console.log(error.message);
+    return false;
+  }
+
+  if (!data) {
+    console.log("Chat sa nepodarilo označiť ako prečítaný.");
+    return false;
+  }
+
+  return true;
 };
 
 export type GroupMember = {

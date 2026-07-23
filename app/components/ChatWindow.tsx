@@ -1,12 +1,14 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { IoArrowBack } from "react-icons/io5";
 import { IoMdMenu } from "react-icons/io";
 import { MdOutlineEmojiEmotions } from "react-icons/md";
 import { RiRobot2Line } from "react-icons/ri";
-import EmojiPicker from "../components/EmojiPicker";
+import EmojiPicker, { type GifOption } from "../components/EmojiPicker";
+import { markChatAsRead } from "../lib/chats";
 import { getElizaResponse } from "../lib/eliza";
 import { getMessages, sendMessage, type Message } from "../lib/messages";
 import { supabase } from "../lib/supabase";
@@ -15,7 +17,9 @@ type ChatWindowProps = {
   chatType: "user" | "bot";
   chatId?: string;
   chatName?: string;
+  chatProfileUserId?: string | null;
   goBack: () => void;
+  onChatRead?: (chatId: string) => void;
 };
 
 type ChatMessage = {
@@ -24,11 +28,32 @@ type ChatMessage = {
   sender: "me" | "other" | "bot";
 };
 
+const gifMessagePrefix = "__gif__|";
+
+const createGifMessageContent = (gif: GifOption) =>
+  `${gifMessagePrefix}${gif.url}|${gif.title}`;
+
+const parseGifMessage = (content: string) => {
+  if (!content.startsWith(gifMessagePrefix)) return null;
+
+  const rawValue = content.slice(gifMessagePrefix.length);
+  const separatorIndex = rawValue.indexOf("|");
+
+  if (separatorIndex === -1) return null;
+
+  return {
+    url: rawValue.slice(0, separatorIndex),
+    title: rawValue.slice(separatorIndex + 1) || "GIF",
+  };
+};
+
 export default function ChatWindow({
   chatType,
   chatId,
   chatName,
+  chatProfileUserId,
   goBack,
+  onChatRead,
 }: ChatWindowProps) {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [message, setMessage] = useState("");
@@ -51,6 +76,14 @@ export default function ChatWindow({
 
   useEffect(() => {
     if (chatType !== "user" || !chatId) return;
+
+    const updateReadState = async () => {
+      const success = await markChatAsRead(chatId);
+
+      if (success) {
+        onChatRead?.(chatId);
+      }
+    };
 
     const loadMessages = async () => {
       setLoading(true);
@@ -76,13 +109,22 @@ export default function ChatWindow({
 
       setMessages(formattedMessages);
       setLoading(false);
+      void updateReadState();
     };
 
     loadMessages();
-  }, [chatType, chatId]);
+  }, [chatType, chatId, onChatRead]);
 
   useEffect(() => {
     if (chatType !== "user" || !chatId) return;
+
+    const updateReadState = async () => {
+      const success = await markChatAsRead(chatId);
+
+      if (success) {
+        onChatRead?.(chatId);
+      }
+    };
 
     const channel = supabase
       .channel(`messages:${chatId}`)
@@ -118,6 +160,7 @@ export default function ChatWindow({
           });
 
           setLoading(false);
+          void updateReadState();
         },
       )
       .subscribe();
@@ -125,7 +168,7 @@ export default function ChatWindow({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [chatType, chatId]);
+  }, [chatType, chatId, onChatRead]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -150,10 +193,10 @@ export default function ChatWindow({
     });
   }, [messages]);
 
-  const handleSendMessage = async () => {
-    const trimmedMessage = message.trim();
+  const sendChatContent = async (content: string) => {
+    const trimmedContent = content.trim();
 
-    if (!trimmedMessage) return;
+    if (!trimmedContent) return;
 
     setMessage("");
     setShowEmojiPicker(false);
@@ -161,34 +204,36 @@ export default function ChatWindow({
     if (chatType === "bot") {
       const newMessage: ChatMessage = {
         id: crypto.randomUUID(),
-        content: trimmedMessage,
+        content: trimmedContent,
         sender: "me",
       };
 
       setMessages((previousMessages) => [...previousMessages, newMessage]);
 
-      const botResponse: ChatMessage = {
-        id: crypto.randomUUID(),
-        content: getElizaResponse(trimmedMessage),
-        sender: "bot",
-      };
+      if (!parseGifMessage(trimmedContent)) {
+        const botResponse: ChatMessage = {
+          id: crypto.randomUUID(),
+          content: getElizaResponse(trimmedContent),
+          sender: "bot",
+        };
 
-      setTimeout(() => {
-        setMessages((previousMessages) => [
-          ...previousMessages,
-          botResponse,
-        ]);
-      }, 500);
+        setTimeout(() => {
+          setMessages((previousMessages) => [
+            ...previousMessages,
+            botResponse,
+          ]);
+        }, 500);
+      }
 
       return;
     }
 
     if (!chatId) return;
 
-    const savedMessage = await sendMessage(chatId, trimmedMessage);
+    const savedMessage = await sendMessage(chatId, trimmedContent);
 
     if (!savedMessage) {
-      setMessage(trimmedMessage);
+      setMessage(trimmedContent);
       return;
     }
 
@@ -200,7 +245,56 @@ export default function ChatWindow({
         sender: "me",
       },
     ]);
+    onChatRead?.(chatId);
   };
+
+  const handleSendMessage = () => {
+    void sendChatContent(message);
+  };
+
+  const handleSelectGif = (gif: GifOption) => {
+    void sendChatContent(createGifMessageContent(gif));
+  };
+
+  const headerProfile = (
+    <>
+      <Image
+        src="/chat/placeholder.svg"
+        alt=""
+        width={40}
+        height={40}
+        className="rounded-full"
+      />
+
+      <span className="truncate font-semibold text-white">
+        {chatName ?? "Používateľ"}
+      </span>
+    </>
+  );
+
+  const otherUserAvatar = chatProfileUserId ? (
+    <Link
+      href={`/profile/${chatProfileUserId}`}
+      className="shrink-0 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500"
+      aria-label="Otvoriť profil používateľa"
+    >
+      <Image
+        src="/chat/placeholder.svg"
+        alt=""
+        width={32}
+        height={32}
+        className="rounded-full"
+      />
+    </Link>
+  ) : (
+    <Image
+      src="/chat/placeholder.svg"
+      alt=""
+      width={32}
+      height={32}
+      className="shrink-0 rounded-full"
+    />
+  );
 
   return (
     <div className="flex h-120 w-full flex-col">
@@ -214,21 +308,19 @@ export default function ChatWindow({
           <IoArrowBack size={20} color="white" />
         </button>
 
-        {chatType === "user" && (
-          <div className="ml-3 flex min-w-0 items-center gap-3">
-            <Image
-              src="/chat/placeholder.svg"
-              alt=""
-              width={40}
-              height={40}
-              className="rounded-full"
-            />
-
-            <span className="truncate font-semibold text-white">
-              {chatName ?? "Používateľ"}
-            </span>
-          </div>
-        )}
+        {chatType === "user" &&
+          (chatProfileUserId ? (
+            <Link
+              href={`/profile/${chatProfileUserId}`}
+              className="ml-3 flex min-w-0 items-center gap-3 rounded-xl pr-2 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/70"
+            >
+              {headerProfile}
+            </Link>
+          ) : (
+            <div className="ml-3 flex min-w-0 items-center gap-3">
+              {headerProfile}
+            </div>
+          ))}
 
         {chatType === "bot" && (
           <div className="absolute left-1/2">
@@ -252,38 +344,60 @@ export default function ChatWindow({
           </p>
         )}
 
-        {messages.map((item) => (
-          <div
-            key={item.id}
-            className={`flex max-w-3/4 items-end gap-2 ${
-              item.sender === "me" ? "ml-auto flex-row-reverse" : "mr-auto"
-            }`}
-          >
-            {item.sender === "bot" ? (
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
-                <RiRobot2Line size={18} />
-              </div>
-            ) : item.sender === "other" ? (
-              <Image
-                src="/chat/placeholder.svg"
-                alt=""
-                width={32}
-                height={32}
-                className="shrink-0 rounded-full"
-              />
-            ) : null}
+        {messages.map((item) => {
+          const gifMessage = parseGifMessage(item.content);
 
-            <span
-              className={`min-w-0 max-w-[25ch] break-words rounded-2xl px-3 py-2 ${
-                item.sender === "me"
-                  ? "bg-blue-600 text-white"
-                  : "bg-slate-200 text-slate-900"
+          return (
+            <div
+              key={item.id}
+              className={`flex max-w-3/4 items-end gap-2 ${
+                item.sender === "me" ? "ml-auto flex-row-reverse" : "mr-auto"
               }`}
             >
-              {item.content}
-            </span>
-          </div>
-        ))}
+              {item.sender === "bot" ? (
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                  <RiRobot2Line size={18} />
+                </div>
+              ) : item.sender === "other" ? (
+                otherUserAvatar
+              ) : null}
+
+              {gifMessage ? (
+                <span
+                  className={`overflow-hidden rounded-2xl border ${
+                    item.sender === "me"
+                      ? "border-blue-600 bg-blue-600"
+                      : "border-slate-200 bg-slate-200"
+                  }`}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={gifMessage.url}
+                    alt={gifMessage.title}
+                    className="h-32 w-44 object-cover"
+                  />
+                  <span
+                    className={`block truncate px-3 py-1 text-xs font-semibold ${
+                      item.sender === "me" ? "text-white" : "text-slate-700"
+                    }`}
+                  >
+                    GIF: {gifMessage.title}
+                  </span>
+                </span>
+              ) : (
+                <span
+                  className={`min-w-0 max-w-[25ch] break-words rounded-2xl px-3 py-2 ${
+                    item.sender === "me"
+                      ? "bg-blue-600 text-white"
+                      : "bg-slate-200 text-slate-900"
+                  }`}
+                >
+                  {item.content}
+                </span>
+              )}
+            </div>
+          );
+        })}
 
         <div ref={messagesEndRef} />
       </div>
@@ -310,7 +424,7 @@ export default function ChatWindow({
           type="button"
           className="mr-2 flex items-center justify-center"
           onClick={() => setShowEmojiPicker((previous) => !previous)}
-          aria-label="Otvoriť emoji"
+          aria-label="Otvoriť emoji a GIF"
         >
           <MdOutlineEmojiEmotions size={25} />
         </button>
@@ -319,8 +433,8 @@ export default function ChatWindow({
           <EmojiPicker
             onSelectEmoji={(emoji) => {
               setMessage((previousMessage) => previousMessage + emoji);
-              setShowEmojiPicker(false);
             }}
+            onSelectGif={handleSelectGif}
           />
         )}
       </div>
